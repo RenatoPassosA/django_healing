@@ -3,7 +3,8 @@ from django.shortcuts import render, redirect
 from .models import Especialidades, DadosMedico, is_medico, DatasAbertas
 from django.contrib import messages
 from django.contrib.messages import constants
-from datetime import datetime
+from datetime import datetime, timedelta
+from paciente.models import Consulta
 
 
 def cadastro_medico(request):
@@ -14,7 +15,9 @@ def cadastro_medico(request):
 
     if request.method == 'GET':
         especialidades = Especialidades.objects.all()
-        context = {'especialidades': especialidades,}
+        context = {'especialidades': especialidades,
+                   'is_medico':is_medico(request.user)
+                   }
         return render(request, 'cadastro_medico.html', context)
     elif request.method == 'POST':
         crm = request.POST.get('crm')
@@ -64,7 +67,8 @@ def abrir_horario(request):
         datas_abertas = DatasAbertas.objects.filter(user=request.user)
         print(datas_abertas)
         context = {'dados_medicos':dados_medicos,
-                   'datas_abertas':datas_abertas
+                   'datas_abertas':datas_abertas,
+                   'is_medico':is_medico(request.user)
                    }
         return render(request, 'abrir_horario.html', context)
     elif request.method == 'POST':
@@ -84,3 +88,55 @@ def abrir_horario(request):
 
         messages.add_message(request, constants.SUCCESS, 'Data aberta com sucesso.')
         return redirect('/medicos/abrir_horario')
+    
+def consultas_medico(request):
+    if not is_medico(request.user):
+        messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página')
+        return redirect('/usuarios/logout')
+    
+    hoje = datetime.now().date()
+    consultas_hoje = Consulta.objects.filter(data_aberta__user=request.user).filter(data_aberta__data__gte=hoje).filter(data_aberta__data__lt=hoje + timedelta(days=1))
+    consultas_restantes = Consulta.objects.exclude(id__in=consultas_hoje.values('id'))
+
+    context = {
+        'consultas_hoje':consultas_hoje,
+        'consultas_restantes':consultas_restantes,
+        'is_medico':is_medico(request.user)
+        }
+
+    return render(request, 'consultas_medico.html', context)
+
+def consulta_area_medico(request, id_consulta):
+    if not is_medico(request.user):
+        messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página')
+        return redirect('/usuarios/logout')
+    
+    if request.method == 'GET':
+        consulta = Consulta.objects.get(id=id_consulta)
+        context = {
+            'consulta':consulta,
+            'is_medico':is_medico(request.user)
+        }
+        return render(request, 'consulta_area_medico.html', context)
+    
+    elif request.method == 'POST':
+        link_consulta = request.POST.get('link')
+        consulta_atual = Consulta.objects.get(id=id_consulta)
+
+        if consulta_atual.status == 'C':
+            messages.add_message(request, constants.WARNING, 'Essa consulta foi cancelada')
+            return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+        elif consulta_atual.status == 'F':
+            messages.add_message(request, constants.WARNING, 'Essa consulta já foi finalizada')
+            return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+        
+        if not link_consulta:
+            messages.add_message(request, constants.WARNING, 'Insira um link válido para a consulta')
+            return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+        
+        
+        consulta_atual.link = link_consulta
+        consulta_atual.status = 'I'
+        consulta_atual.save()
+        messages.add_message(request, constants.SUCCESS, 'Essa consulta inicializada')
+        return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
