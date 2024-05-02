@@ -14,6 +14,10 @@ class Consulta(models.Model):
     status = models.CharField(max_length=1, choices=status_choice, default='A')
     link = models.URLField(null=True, blank=True)
 
+class Documentos(models.Model):
+    consulta = models.ForeignKey(Consulta, on_delete=models.DO_NOTHING)
+    titulo = models.CharField(max_length=30)
+    documento = models.FileField(upload_to='documentos')
 
 
 

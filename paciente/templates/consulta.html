@@ -36,6 +36,8 @@
                             <p style="font-size: 20px" class="p-bold">Dr(a). {{dado_medico.nome}} <i class="bi bi-patch-check-fill icon-main"></i></p>
                             <p>{{dado_medico.descricao}}</p>
                             <p class="p-bold">{{consulta.data_aberta.data}}</p>
+
+                            <a href="{% url "cancelar_consulta" consulta.id%}" class="btn btn-danger">Cancelar consulta</a>
                         </div>
                     </div>
                     <hr>
@@ -70,7 +72,10 @@
                     <hr>
                     <h3 class="p-bold">Meus documentos</h3>
                     <br>
-
+                    {% for documento in documentos %}
+                        <a href="{{documento.documento.url}}" class="link documentos"><i class="bi bi-file-arrow-down"></i> {{documento.titulo}} - {{documento.consulta.data_aberta.data.year}}</a>
+                        <br><br>
+                    {% endfor %}
                     <br>
                     <br>
                     <br>

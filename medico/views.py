@@ -1,10 +1,10 @@
-from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from .models import Especialidades, DadosMedico, is_medico, DatasAbertas
 from django.contrib import messages
 from django.contrib.messages import constants
 from datetime import datetime, timedelta
-from paciente.models import Consulta
+from paciente.models import Consulta, Documentos
+from django.contrib.auth.decorators import login_required
 
 
 def cadastro_medico(request):
@@ -56,6 +56,7 @@ def cadastro_medico(request):
         return redirect('/medicos/abrir_horario')
 
 
+@login_required
 def abrir_horario(request):
     
     if not is_medico(request.user):
@@ -88,7 +89,8 @@ def abrir_horario(request):
 
         messages.add_message(request, constants.SUCCESS, 'Data aberta com sucesso.')
         return redirect('/medicos/abrir_horario')
-    
+
+@login_required    
 def consultas_medico(request):
     if not is_medico(request.user):
         messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página')
@@ -96,7 +98,7 @@ def consultas_medico(request):
     
     hoje = datetime.now().date()
     consultas_hoje = Consulta.objects.filter(data_aberta__user=request.user).filter(data_aberta__data__gte=hoje).filter(data_aberta__data__lt=hoje + timedelta(days=1))
-    consultas_restantes = Consulta.objects.exclude(id__in=consultas_hoje.values('id'))
+    consultas_restantes = Consulta.objects.exclude(id__in=consultas_hoje.values('id')).filter(data_aberta__user=request.user)
 
     context = {
         'consultas_hoje':consultas_hoje,
@@ -106,6 +108,7 @@ def consultas_medico(request):
 
     return render(request, 'consultas_medico.html', context)
 
+@login_required
 def consulta_area_medico(request, id_consulta):
     if not is_medico(request.user):
         messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página')
@@ -113,9 +116,11 @@ def consulta_area_medico(request, id_consulta):
     
     if request.method == 'GET':
         consulta = Consulta.objects.get(id=id_consulta)
+        documentos = Documentos.objects.filter(consulta=consulta)
         context = {
             'consulta':consulta,
-            'is_medico':is_medico(request.user)
+            'is_medico':is_medico(request.user),
+            'documentos':documentos
         }
         return render(request, 'consulta_area_medico.html', context)
     
@@ -140,3 +145,47 @@ def consulta_area_medico(request, id_consulta):
         consulta_atual.save()
         messages.add_message(request, constants.SUCCESS, 'Essa consulta inicializada')
         return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+
+@login_required
+def finalizar_consulta(request, id_consulta):
+    if not is_medico(request.user):
+        messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página')
+        return redirect('/usuarios/logout')
+    
+    consulta = Consulta.objects.get(id=id_consulta)
+    if not request.user == consulta.data_aberta.user:
+        messages.add_message(request, constants.ERROR, 'Essa consulta não é sua')
+        return redirect(f'/medicos/consultas_medico/')
+    consulta.status = 'F'
+    consulta.save()
+    
+    return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+
+@login_required
+def add_documento(request, id_consulta):
+    if not is_medico(request.user):
+        messages.add_message(request, constants.WARNING, 'Somente médicos podem acessar essa página')
+        return redirect('/usuarios/logout')
+    
+    consulta = Consulta.objects.get(id=id_consulta)
+    if not request.user == consulta.data_aberta.user:
+        messages.add_message(request, constants.ERROR, 'Essa consulta não é sua')
+        return redirect(f'/medicos/consultas_medico/')
+    
+    titulo = request.POST.get('titulo')
+    documento = request.FILES.get('documento')
+
+    if not documento:
+        messages.add_message(request, constants.ERROR, 'Preencha o campo documento')
+        return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+    
+    documento = Documentos(
+        consulta = consulta,
+        titulo = titulo,
+        documento = documento
+    )
+    documento.save()
+    messages.add_message(request, constants.SUCCESS, 'Documento enviado com sucesso.')
+    return redirect(f'/medicos/consulta_area_medico/{id_consulta}')
+    
+
